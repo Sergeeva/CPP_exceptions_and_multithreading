@@ -8,15 +8,10 @@
 - **Научиться мигрировать C-код** на современные C++ подходы
 
 ---
-## 📋**1.1: От кодов ошибок к исключениям**
+## 1.1: От кодов ошибок к исключениям
 
 ### Ошибка (Error)
 Нарушение условий корректной работы программы, которое может быть обнаружено во время выполнения или компиляции.
-
-**Классификация ошибок:**
-- **Логические ошибки** - неправильный алгоритм
-- **Системные ошибки** - недоступность ресурсов (файл, память, сеть)
-- **Пользовательские ошибки** - некорректный ввод данных
 
 ### Обработка ошибок (Error Handling)
 Процесс обнаружения, передачи информации и восстановления после ошибок в программе.
@@ -26,7 +21,7 @@
 2. **Глобальные переменные** (errno в C) - информация об ошибке сохраняется глобально
 3. **Исключения** (exceptions) - специальный механизм передачи ошибок
 
-### Традиционных подходы к обработке ошибок на C
+### Подходы к обработке ошибок на C
 
 #### Коды возврата (Return Codes)
 
@@ -47,254 +42,10 @@
 
 #### Примеры реализации кодов возврата
 
-**1. Коды возврата через препроцессор (макросы):**
+1. Коды возврата через препроцессор (макросы)
 
-```c
-// errors.h - определения кодов ошибок через препроцессор
-#define SUCCESS                    0
-#define ERROR_FILE_NOT_FOUND      -1
-#define ERROR_INSUFFICIENT_MEMORY -2
-#define ERROR_INVALID_PARAMETER   -3
-#define ERROR_ACCESS_DENIED       -4
-#define ERROR_DISK_FULL          -5
-#define ERROR_TIMEOUT            -6
-#define ERROR_NETWORK_FAILURE    -7
+2. Коды возврата через enum (перечисления)
 
-// Макросы для проверки и распространения ошибок
-#define CHECK_ERROR(expr) do { \
-    int result = (expr); \
-    if (result != SUCCESS) { \
-        return result; \
-    } \
-} while(0)
-
-#define RETURN_ON_ERROR(expr) do { \
-    int err = (expr); \
-    if (err != SUCCESS) { \
-        cleanup(); \
-        return err; \
-    } \
-} while(0)
-
-// Использование в коде
-int open_file(const char* filename, FILE** file) {
-    if (!filename || !file) return ERROR_INVALID_PARAMETER;
-    
-    *file = fopen(filename, "r");
-    if (!*file) {
-        switch(errno) {
-            case ENOENT: return ERROR_FILE_NOT_FOUND;
-            case EACCES: return ERROR_ACCESS_DENIED;
-            default: return ERROR_FILE_NOT_FOUND;
-        }
-    }
-    
-    return SUCCESS;
-}
-
-int process_file(const char* filename) {
-    FILE* file;
-    char* buffer = NULL;
-    
-    // Проверяем каждую операцию
-    CHECK_ERROR(open_file(filename, &file));
-    
-    buffer = malloc(1024);
-    if (!buffer) {
-        fclose(file);
-        return ERROR_INSUFFICIENT_MEMORY;
-    }
-    
-    // Основная работа
-    size_t bytes_read = fread(buffer, 1, 1024, file);
-    if (bytes_read == 0 && ferror(file)) {
-        free(buffer);
-        fclose(file);
-        return ERROR_FILE_NOT_FOUND;
-    }
-    
-    // Очистка ресурсов
-    free(buffer);
-    fclose(file);
-    return SUCCESS;
-}
-
-// Пример использования с обработкой ошибок
-int main() {
-    int result = process_file("data.txt");
-    
-    switch(result) {
-        case SUCCESS:
-            printf("File processed successfully\n");
-            break;
-        case ERROR_FILE_NOT_FOUND:
-            printf("Error: File not found\n");
-            break;
-        case ERROR_INSUFFICIENT_MEMORY:
-            printf("Error: Not enough memory\n");
-            break;
-        case ERROR_INVALID_PARAMETER:
-            printf("Error: Invalid parameter\n");
-            break;
-        default:
-            printf("Unknown error: %d\n", result);
-    }
-    
-    return result == SUCCESS ? 0 : 1;
-}
-```
-
-**2. Коды возврата через enum (перечисления):**
-
-```c
-// error_codes.h - типобезопасные коды ошибок
-typedef enum {
-    RESULT_SUCCESS = 0,
-    RESULT_ERROR_FILE_NOT_FOUND,
-    RESULT_ERROR_INSUFFICIENT_MEMORY, 
-    RESULT_ERROR_INVALID_PARAMETER,
-    RESULT_ERROR_ACCESS_DENIED,
-    RESULT_ERROR_DISK_FULL,
-    RESULT_ERROR_TIMEOUT,
-    RESULT_ERROR_NETWORK_FAILURE,
-    RESULT_ERROR_COUNT  // для валидации
-} result_code_t;
-
-// Структура для возвращения значения и ошибки
-typedef struct {
-    result_code_t code;
-    union {
-        void* ptr_value;
-        int int_value;
-        double double_value;
-    } value;
-} result_t;
-
-// Макросы для создания результатов
-#define MAKE_SUCCESS(val) ((result_t){RESULT_SUCCESS, .value.int_value = (val)})
-#define MAKE_ERROR(code) ((result_t){(code), .value.int_value = 0})
-#define IS_SUCCESS(result) ((result).code == RESULT_SUCCESS)
-#define IS_ERROR(result) ((result).code != RESULT_SUCCESS)
-
-// Функция для получения описания ошибки
-const char* get_error_string(result_code_t code) {
-    static const char* error_messages[] = {
-        "Success",
-        "File not found",
-        "Insufficient memory",
-        "Invalid parameter", 
-        "Access denied",
-        "Disk full",
-        "Timeout",
-        "Network failure"
-    };
-    
-    if (code >= 0 && code < RESULT_ERROR_COUNT) {
-        return error_messages[code];
-    }
-    return "Unknown error";
-}
-
-// Примеры использования enum-кодов
-result_t divide_integers(int a, int b) {
-    if (b == 0) {
-        return MAKE_ERROR(RESULT_ERROR_INVALID_PARAMETER);
-    }
-    return MAKE_SUCCESS(a / b);
-}
-
-result_t open_and_read_file(const char* filename, char** buffer, size_t* size) {
-    if (!filename || !buffer || !size) {
-        return MAKE_ERROR(RESULT_ERROR_INVALID_PARAMETER);
-    }
-    
-    FILE* file = fopen(filename, "rb");
-    if (!file) {
-        switch(errno) {
-            case ENOENT: return MAKE_ERROR(RESULT_ERROR_FILE_NOT_FOUND);
-            case EACCES: return MAKE_ERROR(RESULT_ERROR_ACCESS_DENIED);
-            default: return MAKE_ERROR(RESULT_ERROR_FILE_NOT_FOUND);
-        }
-    }
-    
-    // Определяем размер файла
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    
-    *buffer = malloc(file_size + 1);
-    if (!*buffer) {
-        fclose(file);
-        return MAKE_ERROR(RESULT_ERROR_INSUFFICIENT_MEMORY);
-    }
-    
-    size_t bytes_read = fread(*buffer, 1, file_size, file);
-    if (bytes_read != file_size) {
-        free(*buffer);
-        *buffer = NULL;
-        fclose(file);
-        return MAKE_ERROR(RESULT_ERROR_FILE_NOT_FOUND);
-    }
-    
-    (*buffer)[file_size] = '\0';
-    *size = file_size;
-    fclose(file);
-    
-    return MAKE_SUCCESS(0);
-}
-
-// Пример композиции функций с enum-кодами
-result_t process_config_file(const char* config_path) {
-    char* buffer = NULL;
-    size_t size = 0;
-    
-    result_t read_result = open_and_read_file(config_path, &buffer, &size);
-    if (IS_ERROR(read_result)) {
-        return read_result;
-    }
-    
-    // Парсинг конфигурации (упрощенный пример)
-    if (strstr(buffer, "invalid_config") != NULL) {
-        free(buffer);
-        return MAKE_ERROR(RESULT_ERROR_INVALID_PARAMETER);
-    }
-    
-    // Основная логика обработки
-    printf("Config processed successfully, size: %zu bytes\n", size);
-    
-    free(buffer);
-    return MAKE_SUCCESS(1);
-}
-
-// Использование в main с enum-кодами
-int main() {
-    result_t math_result = divide_integers(10, 2);
-    if (IS_SUCCESS(math_result)) {
-        printf("Division result: %d\n", math_result.value.int_value);
-    } else {
-        printf("Math error: %s\n", get_error_string(math_result.code));
-    }
-    
-    result_t config_result = process_config_file("config.ini");
-    if (IS_ERROR(config_result)) {
-        printf("Config processing failed: %s\n", get_error_string(config_result.code));
-        return 1;
-    }
-    
-    return 0;
-}
-```
-
-**Сравнение подходов:**
-
-| Аспект | Макросы | Enum |
-|--------|---------|------|
-| Типобезопасность | ❌ Отсутствует | ✅ Есть |
-| Читаемость кода | ⚠️ Средняя | ✅ Высокая |
-| Возможность расширения | ⚠️ Требует осторожности | ✅ Простое добавление |
-| Производительность | ✅ Максимальная | ✅ Высокая |
-| Отладка | ❌ Сложная | ✅ Простая |
-| Совместимость с C++ | ⚠️ Ограниченная | ✅ Хорошая |
 
 #### Глобальные переменные (errno)
 
@@ -308,141 +59,6 @@ int main() {
 - ✅ **Обратная совместимость**: Поддержка legacy кода
 - ✅ **Низкие накладные расходы**: Простое присваивание значения
 - ✅ **Интеграция с системными вызовами**: Прямая связь с операционной системой
-
-```c
-#include <errno.h>
-#include <string.h>  // для strerror
-#include <stdio.h>
-
-// Демонстрация различных сценариев использования errno
-void demonstrate_errno_usage() {
-    // 1. Работа с файлами
-    printf("=== File Operations ===\n");
-    FILE* file = fopen("nonexistent_file.txt", "r");
-    if (!file) {
-        printf("fopen failed: errno=%d (%s)\n", errno, strerror(errno));
-        // Обычно выведет: fopen failed: errno=2 (No such file or directory)
-    }
-    
-    errno = 0; // Сброс перед следующей операцией
-    
-    // 2. Математические функции
-    printf("\n=== Math Operations ===\n");
-    double result = sqrt(-1.0);  // Недопустимая операция
-    if (errno == EDOM) {
-        printf("sqrt(-1): Domain error (errno=%d)\n", errno);
-    }
-    
-    errno = 0;
-    result = exp(1000.0);  // Переполнение
-    if (errno == ERANGE) {
-        printf("exp(1000): Range error - overflow (errno=%d)\n", errno);
-    }
-    
-    // 3. Строковые операции
-    printf("\n=== String Operations ===\n");
-    errno = 0;
-    long value = strtol("999999999999999999999", NULL, 10); // Переполнение
-    if (errno == ERANGE) {
-        printf("strtol overflow: errno=%d, value=%ld\n", errno, value);
-    }
-    
-    // 4. Динамическая память  
-    printf("\n=== Memory Operations ===\n");
-    errno = 0;
-    void* huge_block = malloc(SIZE_MAX); // Попытка выделить максимум памяти
-    if (!huge_block && errno == ENOMEM) {
-        printf("malloc failed: Not enough memory (errno=%d)\n", errno);
-    }
-}
-
-// Пример надежной функции с использованием errno
-int safe_file_copy(const char* source, const char* destination) {
-    FILE* src = NULL, *dst = NULL;
-    char buffer[4096];
-    size_t bytes_read, bytes_written;
-    int saved_errno;
-    
-    // Открываем исходный файл
-    errno = 0;
-    src = fopen(source, "rb");
-    if (!src) {
-        saved_errno = errno;
-        printf("Cannot open source file '%s': %s\n", source, strerror(saved_errno));
-        return -saved_errno;
-    }
-    
-    // Открываем целевой файл
-    errno = 0; 
-    dst = fopen(destination, "wb");
-    if (!dst) {
-        saved_errno = errno;
-        printf("Cannot create destination file '%s': %s\n", destination, strerror(saved_errno));
-        fclose(src);
-        return -saved_errno;
-    }
-    
-    // Копируем содержимое
-    while (1) {
-        errno = 0;
-        bytes_read = fread(buffer, 1, sizeof(buffer), src);
-        
-        if (bytes_read == 0) {
-            if (feof(src)) {
-                break; // Конец файла - нормальное завершение
-            } else if (ferror(src)) {
-                saved_errno = errno;
-                printf("Error reading from '%s': %s\n", source, strerror(saved_errno));
-                fclose(src);
-                fclose(dst);
-                remove(destination); // Удаляем частично скопированный файл
-                return -saved_errno;
-            }
-        }
-        
-        bytes_written = fwrite(buffer, 1, bytes_read, dst);
-        if (bytes_written != bytes_read) {
-            saved_errno = errno;
-            printf("Error writing to '%s': %s\n", destination, strerror(saved_errno));
-            fclose(src);
-            fclose(dst);
-            remove(destination);
-            return -saved_errno;
-        }
-    }
-    
-    fclose(src);
-    if (fclose(dst) != 0) {
-        saved_errno = errno;
-        printf("Error closing '%s': %s\n", destination, strerror(saved_errno));
-        return -saved_errno;
-    }
-    
-    return 0; // Успех
-}
-
-// Расширенные коды ошибок POSIX
-void demonstrate_posix_errno() {
-    printf("\n=== Common POSIX errno values ===\n");
-    printf("EPERM (1): %s\n", strerror(EPERM));       // Operation not permitted
-    printf("ENOENT (2): %s\n", strerror(ENOENT));     // No such file or directory  
-    printf("EINTR (4): %s\n", strerror(EINTR));       // Interrupted system call
-    printf("EIO (5): %s\n", strerror(EIO));           // I/O error
-    printf("ENXIO (6): %s\n", strerror(ENXIO));       // No such device or address
-    printf("EACCES (13): %s\n", strerror(EACCES));    // Permission denied
-    printf("EFAULT (14): %s\n", strerror(EFAULT));    // Bad address
-    printf("EBUSY (16): %s\n", strerror(EBUSY));      // Device or resource busy
-    printf("EEXIST (17): %s\n", strerror(EEXIST));    // File exists
-    printf("ENOTDIR (20): %s\n", strerror(ENOTDIR));  // Not a directory
-    printf("EISDIR (21): %s\n", strerror(EISDIR));    // Is a directory
-    printf("EINVAL (22): %s\n", strerror(EINVAL));    // Invalid argument
-    printf("EMFILE (24): %s\n", strerror(EMFILE));    // Too many open files
-    printf("ENOSPC (28): %s\n", strerror(ENOSPC));    // No space left on device
-    printf("EPIPE (32): %s\n", strerror(EPIPE));      // Broken pipe
-    printf("EDOM (33): %s\n", strerror(EDOM));        // Math domain error
-    printf("ERANGE (34): %s\n", strerror(ERANGE));    // Math range error
-}
-```
 
 **Проблемы подхода с errno:**
 - ❌ **Не thread-safe в старых реализациях** (решено в современных системах)
@@ -514,7 +130,6 @@ void process_file(const std::string& filename) {
 }
 ```
 
-
 **Ключевые характеристики:**
 - Исключение **нельзя проигнорировать**
 - Исключение **автоматически распространяется** по стеку вызовов
@@ -529,6 +144,8 @@ void process_file(const std::string& filename) {
 ```cpp
 throw expression;
 ```
+Выбросить исключение можно любого типа.
+Но хорошим тоном считается выбросить объект класса ``std::exception`` или его наследника.
 
 **Примеры:**
 ```cpp
@@ -595,6 +212,11 @@ catch (...) {
 ```
 
 **Порядок catch блоков важен!** - от более специфичных к более общим.
+Т.е. сначала ловим наследников, а потом уже базового типа.
+
+Если исключение нигде не поймано, то произойдет аварийное завершение 
+``std::terminate()``.
+Не стоит выбрасывать исключения из ``main`` -- ловить их будет некому.
 
 #### Иерархия стандартных исключений
 
@@ -615,105 +237,128 @@ std::exception
     └── std::system_error
 ```
 
-### Глубокое погружение в исключения: раскрутка стека (Stack Unwinding)
+## 1.2 Глубокое погружение в исключения
 
-**Stack Unwinding** — это процесс автоматического вызова деструкторов для всех автоматических объектов, созданных с момента входа в блок `try` до точки возникновения исключения. Этот механизм является ключевым для обеспечения безопасности исключений в C++.
+### Определение и философия RAII (Resource Acquisition is Initialization)
 
-#### Как работает Stack Unwinding
+**RAII** - это идиома программирования, которая связывает время жизни ресурса со временем жизни объекта.
+
+**Основные принципы:**
+1. **Ресурс приобретается в конструкторе** объекта
+2. **Ресурс освобождается в деструкторе** объекта  
+3. **Время жизни ресурса = время жизни объекта**
+4. **Автоматическое управление** - программист не думает об освобождении
+
+
+#### Решение с RAII
 
 ```cpp
-#include <iostream>
-#include <stdexcept>
-
-// Класс для демонстрации времени жизни объектов
-class Demo {
-    std::string name_;
+// RAII wrapper для FILE*
+class FileWrapper {
+    FILE* file_;
+    std::string filename_;
+    
 public:
-    Demo(const std::string& name) : name_(name) {
-        std::cout << "Конструктор: " << name_ << std::endl;
+    FileWrapper(const std::string& filename, const char* mode) 
+        : filename_(filename) {
+        file_ = fopen(filename_.c_str(), mode);
+        if (!file_) {
+            throw std::runtime_error("Cannot open file: " + filename_);
+        }
+        std::cout << "File opened: " << filename_ << std::endl;
     }
     
-    ~Demo() {
-        std::cout << "Деструктор: " << name_ << std::endl;
+    ~FileWrapper() {
+        if (file_) {
+            fclose(file_);
+            std::cout << "File closed: " << filename_ << std::endl;
+        }
     }
     
-    void do_work() {
-        std::cout << "Работает: " << name_ << std::endl;
+    // Запрещаем копирование
+    FileWrapper(const FileWrapper&) = delete;
+    FileWrapper& operator=(const FileWrapper&) = delete;
+    
+    // Разрешаем перемещение
+    FileWrapper(FileWrapper&& other) noexcept 
+        : file_(other.file_), filename_(std::move(other.filename_)) {
+        other.file_ = nullptr;
     }
+    
+    FILE* get() const { return file_; }
+    operator FILE*() const { return file_; }
 };
 
-void function_C() {
-    Demo obj_c("Объект_C");
-    obj_c.do_work();
+// RAII wrapper для динамической памяти  
+template<typename T>
+class ArrayWrapper {
+    T* data_;
+    size_t size_;
     
-    // Здесь возникает исключение
-    throw std::runtime_error("Ошибка в функции C");
-    
-    // Эта строка никогда не выполнится
-    std::cout << "После исключения в C" << std::endl;
-}
-
-void function_B() {
-    Demo obj_b("Объект_B");  
-    obj_b.do_work();
-    
-    {
-        Demo obj_b_inner("Объект_B_внутренний");
-        function_C(); // Вызов функции, которая выбросит исключение
+public:
+    explicit ArrayWrapper(size_t size) : size_(size) {
+        data_ = new T[size_];
+        std::cout << "Array allocated: " << size_ << " elements" << std::endl;
     }
     
-    // Эта строка не выполнится
-    std::cout << "После вызова C в B" << std::endl;
-}
-
-void function_A() {
-    Demo obj_a("Объект_A");
-    obj_a.do_work();
-    
-    try {
-        function_B();
-    } catch (const std::exception& e) {
-        std::cout << "Перехвачено исключение: " << e.what() << std::endl;
+    ~ArrayWrapper() {
+        delete[] data_;
+        std::cout << "Array deallocated" << std::endl;
     }
     
-    // Эта строка выполнится!
-    std::cout << "Продолжение работы в A" << std::endl;
-}
+    T* get() const { return data_; }
+    T& operator[](size_t index) { return data_[index]; }
+    const T& operator[](size_t index) const { return data_[index]; }
+    size_t size() const { return size_; }
+};
 
-int main() {
-    std::cout << "=== Демонстрация Stack Unwinding ===" << std::endl;
-    function_A();
-    std::cout << "=== Конец программы ===" << std::endl;
-    return 0;
+// Использование RAII
+void raii_function() {
+    // Ресурсы приобретаются при создании объектов
+    FileWrapper file("data.txt", "r");      // Автоматическое открытие
+    ArrayWrapper<char> buffer(1024);        // Автоматическое выделение памяти
+    
+    // Работаем с ресурсами
+    if (some_condition) {
+        return;  // ✅ Автоматическая очистка!
+    }
+    
+    if (another_condition) {
+        throw std::runtime_error("Error");  // ✅ Автоматическая очистка!
+    }
+    
+    // Даже при нормальном завершении - автоматическая очистка!
+    // Деструкторы вызываются автоматически при выходе из области видимости
 }
-
-/*
-Ожидаемый вывод:
-=== Демонстрация Stack Unwinding ===
-Конструктор: Объект_A
-Работает: Объект_A
-Конструктор: Объект_B
-Работает: Объект_B
-Конструктор: Объект_B_внутренний
-Конструктор: Объект_C
-Работает: Объект_C
-Деструктор: Объект_C          // ← Stack unwinding начинается здесь
-Деструктор: Объект_B_внутренний // ← Продолжается здесь
-Деструктор: Объект_B           // ← И здесь
-Перехвачено исключение: Ошибка в функции C
-Продолжение работы в A
-Деструктор: Объект_A          // ← Нормальное завершение
-=== Конец программы ===
-*/
 ```
+
+#### Умные указатели как реализация RAII:
+```cpp
+auto resource = std::make_unique<Resource>();
+// Автоматическое освобождение при любом выходе из области видимости
+```
+
+
+ ### Раскрутка стека (Stack Unwinding)
+
+**Stack Unwinding** — это процесс распространения исключения вверх по стеку, пока оно не будет поймано первым подходящим блоком catch b автоматического вызова деструкторов для всех автоматических объектов, созданных с момента входа в блок `try` до точки возникновения исключения. 
+Этот механизм является ключевым для обеспечения безопасности исключений в C++.
+
 #### Важные аспекты Stack Unwinding
 
 **1. Гарантия вызова деструкторов:**
 - Все полностью сконструированные автоматические объекты будут уничтожены
 - Деструкторы вызываются в **обратном порядке** конструирования
-- Частично сконструированные объекты не будут иметь вызов деструктора
+- Для Частично сконструированные объекты не будут иметь вызов деструктора
 
 **2. Исключения в деструкторах:**
+
+Если при раскрутке стека возникнет еще одно исключение, то будет вызван std::terminate().
+
+По этой причине выброс исключения за пределы деструктора может привести к аварийному завершению программы.
+
+По умолчанию все деструкторы в С++ помечены как noexept.
+
 ```cpp
 class ProblematicClass {
 public:
@@ -746,7 +391,10 @@ public:
 - Вызов множественных деструкторов
 - В критичных к производительности участках стоит минимизировать исключения
 
-### Альтернативы исключениям в C++23 
+
+
+
+<!-- ### Альтернативы исключениям в C++23 
 
 #### std::expected<T, E> - подробное руководство
 
@@ -1090,140 +738,8 @@ public:
 - **`exceptions`** - для исключительных ситуаций и когда нужен RAII
 - **Комбинированный подход** часто наиболее практичен
 - **Последовательность** в проекте важнее чем идеальный выбор инструмента
+ -->
 
-## 📋 **1.2: RAII и гарантии безопасности относительно исключений (Exception Safety)**
-
-### Определение и философия RAII (Resource Acquisition is Initialization)
-
-**RAII** - это идиома программирования, которая связывает время жизни ресурса со временем жизни объекта.
-
-**Основные принципы:**
-1. **Ресурс приобретается в конструкторе** объекта
-2. **Ресурс освобождается в деструкторе** объекта  
-3. **Время жизни ресурса = время жизни объекта**
-4. **Автоматическое управление** - программист не думает об освобождении
-
-#### Проблема без RAII
-
-```cpp
-void problematic_function() {
-    // Приобретение ресурсов
-    FILE* file = fopen("data.txt", "r");
-    char* buffer = new char[1024];
-    HANDLE mutex = CreateMutex(NULL, FALSE, NULL);
-    
-    // Работа с ресурсами
-    if (some_condition) {
-        // ПРОБЛЕМА: забыли освободить ресурсы!
-        return;
-    }
-    
-    if (another_condition) {
-        // ПРОБЛЕМА: частичное освобождение!
-        delete[] buffer;
-        return;
-    }
-    
-    // Обычное освобождение (может не выполниться при исключении)
-    CloseHandle(mutex);
-    delete[] buffer;
-    fclose(file);
-}
-```
-
-**Проблемы:**
-- ❌ Множественные точки выхода требуют дублирования кода очистки
-- ❌ Легко забыть освободить ресурс
-- ❌ Исключения могут прервать освобождение ресурсов
-- ❌ Сложность поддержки при изменении кода
-
-#### Решение с RAII
-
-```cpp
-// RAII wrapper для FILE*
-class FileWrapper {
-    FILE* file_;
-    std::string filename_;
-    
-public:
-    FileWrapper(const std::string& filename, const char* mode) 
-        : filename_(filename) {
-        file_ = fopen(filename_.c_str(), mode);
-        if (!file_) {
-            throw std::runtime_error("Cannot open file: " + filename_);
-        }
-        std::cout << "File opened: " << filename_ << std::endl;
-    }
-    
-    ~FileWrapper() {
-        if (file_) {
-            fclose(file_);
-            std::cout << "File closed: " << filename_ << std::endl;
-        }
-    }
-    
-    // Запрещаем копирование
-    FileWrapper(const FileWrapper&) = delete;
-    FileWrapper& operator=(const FileWrapper&) = delete;
-    
-    // Разрешаем перемещение
-    FileWrapper(FileWrapper&& other) noexcept 
-        : file_(other.file_), filename_(std::move(other.filename_)) {
-        other.file_ = nullptr;
-    }
-    
-    FILE* get() const { return file_; }
-    operator FILE*() const { return file_; }
-};
-
-// RAII wrapper для динамической памяти  
-template<typename T>
-class ArrayWrapper {
-    T* data_;
-    size_t size_;
-    
-public:
-    explicit ArrayWrapper(size_t size) : size_(size) {
-        data_ = new T[size_];
-        std::cout << "Array allocated: " << size_ << " elements" << std::endl;
-    }
-    
-    ~ArrayWrapper() {
-        delete[] data_;
-        std::cout << "Array deallocated" << std::endl;
-    }
-    
-    T* get() const { return data_; }
-    T& operator[](size_t index) { return data_[index]; }
-    const T& operator[](size_t index) const { return data_[index]; }
-    size_t size() const { return size_; }
-};
-
-// Использование RAII
-void raii_function() {
-    // Ресурсы приобретаются при создании объектов
-    FileWrapper file("data.txt", "r");      // Автоматическое открытие
-    ArrayWrapper<char> buffer(1024);        // Автоматическое выделение памяти
-    
-    // Работаем с ресурсами
-    if (some_condition) {
-        return;  // ✅ Автоматическая очистка!
-    }
-    
-    if (another_condition) {
-        throw std::runtime_error("Error");  // ✅ Автоматическая очистка!
-    }
-    
-    // Даже при нормальном завершении - автоматическая очистка!
-    // Деструкторы вызываются автоматически при выходе из области видимости
-}
-```
-
-#### Умные указатели как реализация RAII:
-```cpp
-auto resource = std::make_unique<Resource>();
-// Автоматическое освобождение при любом выходе из области видимости
-```
 
 ### Уровни гарантий Exception Safety
 
@@ -1380,107 +896,6 @@ public:
 ### Copy-and-Swap идиома
 
 Паттерн, который обеспечивает strong exception safety для операторов присваивания.
-
-```cpp
-template<typename T>
-class SafeContainer {
-    T* data_;
-    size_t size_;
-    size_t capacity_;
-    
-    // Безопасная функция копирования
-    T* safe_copy(const T* source, size_t count) {
-        if (count == 0) return nullptr;
-        
-        T* dest = new T[count];  // Может выбросить bad_alloc
-        
-        try {
-            for (size_t i = 0; i < count; ++i) {
-                dest[i] = source[i];  // Может выбросить исключение при копировании
-            }
-        } catch (...) {
-            delete[] dest;  // Освобождаем частично заполненный массив
-            throw;
-        }
-        
-        return dest;
-    }
-    
-public:
-    SafeContainer() : data_(nullptr), size_(0), capacity_(0) {}
-    
-    SafeContainer(size_t capacity) : capacity_(capacity), size_(0) {
-        data_ = new T[capacity_];
-    }
-    
-    // Copy constructor
-    SafeContainer(const SafeContainer& other) 
-        : data_(safe_copy(other.data_, other.capacity_))
-        , size_(other.size_)
-        , capacity_(other.capacity_) {}
-    
-    // Copy assignment через copy-and-swap
-    SafeContainer& operator=(const SafeContainer& other) {
-        if (this != &other) {
-            SafeContainer temp(other);      // Создаем копию (может выбросить)
-            swap(temp);                     // Обмениваем (noexcept)
-        }
-        return *this;
-        // temp автоматически уничтожается, освобождая старые данные
-    }
-    
-    // Move constructor (noexcept)
-    SafeContainer(SafeContainer&& other) noexcept 
-        : data_(other.data_)
-        , size_(other.size_)
-        , capacity_(other.capacity_) {
-        
-        other.data_ = nullptr;
-        other.size_ = 0;
-        other.capacity_ = 0;
-    }
-    
-    // Move assignment
-    SafeContainer& operator=(SafeContainer&& other) noexcept {
-        if (this != &other) {
-            delete[] data_;
-            
-            data_ = other.data_;
-            size_ = other.size_;
-            capacity_ = other.capacity_;
-            
-            other.data_ = nullptr;
-            other.size_ = 0;
-            other.capacity_ = 0;
-        }
-        return *this;
-    }
-    
-    ~SafeContainer() {
-        delete[] data_;
-    }
-    
-    // noexcept swap - ключевая функция для copy-and-swap
-    void swap(SafeContainer& other) noexcept {
-        std::swap(data_, other.data_);
-        std::swap(size_, other.size_);
-        std::swap(capacity_, other.capacity_);
-    }
-};
-
-// Глобальная swap функция
-template<typename T>
-void swap(SafeContainer<T>& a, SafeContainer<T>& b) noexcept {
-    a.swap(b);
-}
-```
-
-
-
-
----
-## 📋 **Практические задания**
-[[tasks-part-1]]
 
 
 ---
